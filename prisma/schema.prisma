@@ -1,0 +1,392 @@
+// SwiftCab — Prisma schema
+// Postgres + Prisma. Run `npx prisma migrate dev` after setting DATABASE_URL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────────────────────────────────────────
+// Auth + Users
+// ───────────────────────────────────────────────────────────
+
+enum Role {
+  RIDER
+  DRIVER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  PENDING
+  SUSPENDED
+}
+
+enum MembershipTier {
+  LITE
+  PLUS
+  LUXE
+}
+
+model User {
+  id              String         @id @default(cuid())
+  email           String         @unique
+  passwordHash    String
+  name            String
+  phone           String?
+  role            Role           @default(RIDER)
+  status          UserStatus     @default(ACTIVE)
+  tier            MembershipTier @default(LITE)
+  city            String?
+  avatarUrl       String?
+  emailVerified   DateTime?
+  walletCents     Int            @default(0)
+  loyaltyPoints   Int            @default(0)
+  referralCode    String?        @unique
+  referredById    String?
+
+  bookings        Booking[]      @relation("RiderBookings")
+  payments        Payment[]
+  tickets         SupportTicket[]
+  savedPlaces     SavedPlace[]
+  driver          Driver?
+  sessions        Session[]
+  notifications   Notification[]
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([email])
+  @@index([role, status])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  userAgent String?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+// ───────────────────────────────────────────────────────────
+// Drivers + Vehicles
+// ───────────────────────────────────────────────────────────
+
+enum DriverStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+}
+
+enum DriverTier {
+  STANDARD
+  PRO
+  ELITE
+}
+
+model Driver {
+  id              String        @id @default(cuid())
+  userId          String        @unique
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  licenseNumber   String        @unique
+  licenseExpiry   DateTime
+  status          DriverStatus  @default(PENDING_VERIFICATION)
+  tier            DriverTier    @default(STANDARD)
+  rating          Float         @default(5.0)
+  totalTrips      Int           @default(0)
+  totalEarningsCents BigInt     @default(0)
+  isOnline        Boolean       @default(false)
+  lastSeenAt      DateTime?
+
+  vehicles        Vehicle[]
+  bookings        Booking[]     @relation("DriverBookings")
+  payouts         Payout[]
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([status, isOnline])
+}
+
+model Vehicle {
+  id            String   @id @default(cuid())
+  driverId      String
+  driver        Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  make          String
+  model         String
+  year          Int
+  color         String
+  plate         String   @unique
+  category      RideType @default(LITE)
+  photoUrl      String?
+  insuranceExp  DateTime
+  active        Boolean  @default(true)
+
+  createdAt     DateTime @default(now())
+
+  @@index([driverId])
+}
+
+// ───────────────────────────────────────────────────────────
+// Bookings
+// ───────────────────────────────────────────────────────────
+
+enum RideType {
+  LITE
+  PLUS
+  LUXE
+  BIKE
+  XL
+  AIRPORT
+  RENTAL
+  CORPORATE
+}
+
+enum BookingStatus {
+  PENDING       // Looking for driver
+  ASSIGNED      // Driver matched
+  EN_ROUTE      // Driver heading to pickup
+  IN_PROGRESS   // Trip underway
+  COMPLETED
+  CANCELLED
+}
+
+model Booking {
+  id              String        @id @default(cuid())
+  code            String        @unique @default(cuid())
+
+  riderId         String
+  rider           User          @relation("RiderBookings", fields: [riderId], references: [id])
+
+  driverId        String?
+  driver          Driver?       @relation("DriverBookings", fields: [driverId], references: [id])
+
+  status          BookingStatus @default(PENDING)
+  rideType        RideType
+
+  pickupAddress   String
+  pickupLat       Float
+  pickupLng       Float
+  dropoffAddress  String
+  dropoffLat      Float
+  dropoffLng      Float
+  distanceMeters  Int?
+  durationSeconds Int?
+
+  fareCents       Int
+  baseFareCents   Int
+  surgeMultiplier Float         @default(1.0)
+  serviceFeeCents Int           @default(0)
+  discountCents   Int           @default(0)
+  totalCents      Int
+
+  couponCode      String?
+  notes           String?
+  scheduledFor    DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  cancelReason    String?
+
+  payment         Payment?
+  rating          Rating?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([riderId, status])
+  @@index([driverId, status])
+  @@index([status, createdAt])
+}
+
+model Rating {
+  id          String   @id @default(cuid())
+  bookingId   String   @unique
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  stars       Int
+  comment     String?
+  createdAt   DateTime @default(now())
+}
+
+// ───────────────────────────────────────────────────────────
+// Payments
+// ───────────────────────────────────────────────────────────
+
+enum PaymentProvider {
+  STRIPE
+  RAZORPAY
+  WALLET
+}
+
+enum PaymentMethod {
+  CARD
+  WALLET
+  APPLE_PAY
+  GOOGLE_PAY
+  UPI
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+model Payment {
+  id                String          @id @default(cuid())
+  bookingId         String          @unique
+  booking           Booking         @relation(fields: [bookingId], references: [id])
+  userId            String
+  user              User            @relation(fields: [userId], references: [id])
+
+  amountCents       Int
+  currency          String          @default("USD")
+  provider          PaymentProvider @default(STRIPE)
+  method            PaymentMethod   @default(CARD)
+  status            PaymentStatus   @default(PENDING)
+
+  providerIntentId  String?         @unique
+  providerChargeId  String?
+  receiptUrl        String?
+  failureReason     String?
+  refundedAt        DateTime?
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+}
+
+model Payout {
+  id            String   @id @default(cuid())
+  driverId      String
+  driver        Driver   @relation(fields: [driverId], references: [id])
+  amountCents   Int
+  periodStart   DateTime
+  periodEnd     DateTime
+  paidAt        DateTime?
+  providerRef   String?
+  createdAt     DateTime @default(now())
+
+  @@index([driverId, paidAt])
+}
+
+// ───────────────────────────────────────────────────────────
+// Misc
+// ───────────────────────────────────────────────────────────
+
+model SavedPlace {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label     String
+  address   String
+  lat       Float
+  lng       Float
+  icon      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+enum CouponType {
+  PERCENTAGE
+  FLAT
+}
+
+model Coupon {
+  id            String     @id @default(cuid())
+  code          String     @unique
+  type          CouponType @default(PERCENTAGE)
+  amountCents   Int        @default(0)
+  percent       Int        @default(0)
+  maxDiscountCents Int?
+  expiresAt     DateTime?
+  usageLimit    Int?
+  usedCount     Int        @default(0)
+  active        Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+model SupportTicket {
+  id          String         @id @default(cuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id])
+  subject     String
+  body        String
+  channel     String         @default("CHAT")
+  priority    TicketPriority @default(MEDIUM)
+  status      TicketStatus   @default(OPEN)
+  assignee    String?
+  resolvedAt  DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  messages    TicketMessage[]
+
+  @@index([status, priority])
+}
+
+model TicketMessage {
+  id        String        @id @default(cuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  fromAdmin Boolean       @default(false)
+  body      String
+  createdAt DateTime      @default(now())
+
+  @@index([ticketId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt])
+}
+
+model City {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  country       String
+  timezone      String
+  centerLat     Float
+  centerLng     Float
+  surgeCapMul   Float    @default(1.8)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+}
