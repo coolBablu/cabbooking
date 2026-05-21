@@ -1,13 +1,13 @@
 "use client";
 
 import { use } from "react";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   MapPin,
   Navigation2,
-  Car,
   Phone,
   MessageSquare,
   Shield,
@@ -21,6 +21,26 @@ import {
 } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 
+// Leaflet uses `window` — load only on the client to avoid SSR errors.
+const LiveMap = dynamic(
+  () => import("@/components/ui/LiveMap").then((m) => m.LiveMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="relative flex h-[560px] w-full items-center justify-center bg-ink-900/40">
+        <div className="flex items-center gap-2 text-xs text-white/60">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-sunny-400" />
+          Loading live map…
+        </div>
+      </div>
+    ),
+  }
+);
+
+// Pickup: 1255 Court St, Brooklyn (Carroll Gardens). Dropoff: JFK Terminal 4.
+const PICKUP = { lat: 40.677, lng: -74.006 } as const;
+const DROPOFF = { lat: 40.644, lng: -73.7822 } as const;
+
 export default function RideDetailsPage({
   params,
 }: {
@@ -33,78 +53,25 @@ export default function RideDetailsPage({
       {/* Live tracking map */}
       <div className="lg:col-span-3">
         <div className="relative h-[560px] overflow-hidden rounded-3xl border border-white/10 bg-ink-900/40 backdrop-blur-xl">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(59,130,246,0.25),transparent_50%),radial-gradient(circle_at_70%_80%,rgba(250,204,21,0.18),transparent_45%)]" />
-          <div className="absolute inset-0 bg-grid-pattern bg-[size:32px_32px] opacity-30" />
+          <LiveMap
+            pickup={PICKUP}
+            pickupLabel="Home"
+            dropoff={DROPOFF}
+            dropoffLabel="JFK · T4"
+            driverName="Daniel Okafor"
+            driverVehicle="Tesla Model Y · ABC 4421"
+            className="h-full"
+          />
 
-          {Array.from({ length: 22 }).map((_, i) => (
-            <div
-              key={i}
-              className="absolute rounded-md border border-white/10 bg-white/[0.03]"
-              style={{
-                width: `${30 + (i % 5) * 28}px`,
-                height: `${24 + (i % 4) * 18}px`,
-                left: `${(i * 47) % 92}%`,
-                top: `${(i * 33) % 86}%`,
-              }}
-            />
-          ))}
-
-          <svg viewBox="0 0 700 560" className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="route-track" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#facc15" />
-                <stop offset="50%" stopColor="#60a5fa" />
-                <stop offset="100%" stopColor="#a78bfa" />
-              </linearGradient>
-            </defs>
-            <motion.path
-              d="M70 450 C 200 420, 240 280, 360 280 S 540 160, 640 100"
-              stroke="url(#route-track)"
-              strokeWidth="4"
-              strokeLinecap="round"
-              fill="none"
-              initial={{ pathLength: 0 }}
-              animate={{ pathLength: 1 }}
-              transition={{ duration: 2 }}
-            />
-          </svg>
-
-          {/* Live car */}
-          <motion.div
-            animate={{ offsetDistance: ["0%", "60%"] }}
-            transition={{ duration: 12, repeat: Infinity, ease: "easeInOut", repeatType: "mirror" }}
-            style={{ offsetPath: "path('M70 450 C 200 420, 240 280, 360 280 S 540 160, 640 100')" }}
-            className="absolute flex h-12 w-12 items-center justify-center rounded-full border-2 border-ink-950 bg-sunny-400 shadow-glow-yellow"
-          >
-            <Car size={18} className="text-ink-950" />
-          </motion.div>
-
-          {/* Pickup */}
-          <div className="absolute left-[10%] top-[80%] -translate-x-1/2 -translate-y-1/2">
-            <span className="absolute inset-0 animate-ping rounded-full bg-sunny-400/40" />
-            <div className="relative flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink-950 bg-sunny-400 text-ink-950">
-              <MapPin size={14} />
+          {/* Top status pill — sits above the map's own "Live" badge */}
+          <div className="pointer-events-none absolute left-1/2 top-5 z-[450] flex -translate-x-1/2 items-center gap-3 rounded-full border border-white/10 bg-ink-950/80 px-4 py-2 backdrop-blur-2xl">
+            <div className="relative flex h-3 w-3 items-center justify-center">
+              <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/60" />
+              <span className="relative h-2 w-2 rounded-full bg-emerald-400" />
             </div>
-          </div>
-
-          {/* Destination */}
-          <div className="absolute left-[92%] top-[18%] -translate-x-1/2 -translate-y-1/2">
-            <span className="absolute inset-0 animate-ping rounded-full bg-electric-400/40" />
-            <div className="relative flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink-950 bg-electric-500 text-white">
-              <Navigation2 size={14} />
-            </div>
-          </div>
-
-          {/* Top status */}
-          <div className="absolute left-5 right-5 top-5 flex items-center justify-between rounded-2xl border border-white/10 bg-ink-950/70 px-4 py-3 backdrop-blur-2xl">
-            <div className="flex items-center gap-3">
-              <div className="relative flex h-3 w-3 items-center justify-center">
-                <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/60" />
-                <span className="relative h-2 w-2 rounded-full bg-emerald-400" />
-              </div>
-              <p className="text-sm font-semibold">Daniel is on the way</p>
-            </div>
-            <p className="font-display text-lg text-sunny-400">02:14</p>
+            <p className="text-sm font-semibold">Daniel is on the way</p>
+            <span className="h-3 w-px bg-white/15" />
+            <p className="font-display text-base text-sunny-400">02:14</p>
           </div>
         </div>
       </div>
