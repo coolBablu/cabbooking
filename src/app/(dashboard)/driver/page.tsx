@@ -21,6 +21,7 @@ import {
   DashboardShell,
   DashboardTopbar,
 } from "@/components/dashboard/DashboardSidebar";
+import { useUser } from "@/components/auth/AuthProvider";
 
 const earnings = [
   { day: "Mon", value: 145 },
@@ -68,11 +69,13 @@ const requests = [
 export default function DriverDashboardPage() {
   const [online, setOnline] = useState(true);
   const max = Math.max(...earnings.map((e) => e.value));
+  const user = useUser();
+  const firstName = user?.name?.split(" ")[0] ?? "Driver";
 
   return (
     <DashboardShell variant="driver">
       <DashboardTopbar
-        title="Welcome back, Daniel"
+        title={`Welcome back, ${firstName}`}
         subtitle="Your highest earning day this month was Saturday."
         variant="driver"
       />

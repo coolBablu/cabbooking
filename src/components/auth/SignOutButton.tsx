@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { LogOut, Loader2 } from "lucide-react";
 import { auth } from "@/lib/auth-client";
@@ -13,17 +12,18 @@ export function SignOutButton({
   className?: string;
   label?: string;
 }) {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   async function signOut() {
     try {
       setLoading(true);
       await auth.logout().catch(() => {});
-      router.push(ROUTES.home);
-      router.refresh();
     } finally {
-      setLoading(false);
+      // Hard navigation defeats the browser bfcache so the back button can
+      // never restore the now-stale logged-in view. Using `assign` keeps
+      // `/` in history (forward arrow re-tries home, not the protected
+      // page); `replace` would be even more aggressive if you prefer.
+      window.location.assign(ROUTES.home);
     }
   }
 

@@ -2,18 +2,22 @@ import { SignJWT, jwtVerify, type JWTPayload } from "jose";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { env } from "./env";
-
-const SESSION_COOKIE = "sc_session";
-const SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
+import {
+  SESSION_COOKIE,
+  SESSION_MAX_AGE,
+  type Role,
+  type SessionPayload as EdgeSessionPayload,
+} from "./session-edge";
 
 const secret = new TextEncoder().encode(env.jwtSecret);
 
-export type SessionPayload = JWTPayload & {
-  sub: string; // user id
-  email: string;
-  role: "RIDER" | "DRIVER" | "ADMIN";
-  name?: string;
-};
+export type SessionPayload = JWTPayload &
+  EdgeSessionPayload & {
+    sub: string;
+    email: string;
+    role: Role;
+    name?: string;
+  };
 
 export async function hashPassword(plain: string): Promise<string> {
   return bcrypt.hash(plain, 12);

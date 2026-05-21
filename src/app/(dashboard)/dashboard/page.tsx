@@ -23,6 +23,7 @@ import {
   DashboardTopbar,
 } from "@/components/dashboard/DashboardSidebar";
 import { ROUTES } from "@/lib/routes";
+import { useUser } from "@/components/auth/AuthProvider";
 
 const trips = [
   {
@@ -70,11 +71,20 @@ const saved = [
   { label: "Mom's place", addr: "Park Slope, 78th Ave", icon: "❤️" },
 ];
 
+function greeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 export default function UserDashboardPage() {
+  const user = useUser();
+  const firstName = user?.name?.split(" ")[0] ?? "there";
   return (
     <DashboardShell variant="user">
       <DashboardTopbar
-        title="Good afternoon, Alex 👋"
+        title={`${greeting()}, ${firstName}`}
         subtitle="Here's what's new on your SwiftCab today."
       />
 

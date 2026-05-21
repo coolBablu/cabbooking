@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
 import {
@@ -39,9 +39,9 @@ function LoginFallback() {
 }
 
 function LoginForm() {
-  const router = useRouter();
   const params = useSearchParams();
-  const redirect = params.get("redirect");
+  // Accept both `?next=` (canonical) and the legacy `?redirect=`.
+  const nextParam = params.get("next") || params.get("redirect");
 
   const [show, setShow] = useState(false);
   const [email, setEmail] = useState("");
@@ -70,8 +70,12 @@ function LoginForm() {
     try {
       setSubmitting(true);
       const { user } = await auth.login({ email: email.trim(), password });
-      router.push(redirect || homeForRole(user.role));
-      router.refresh();
+      const dest =
+        nextParam && nextParam.startsWith("/") ? nextParam : homeForRole(user.role);
+      // Hard navigation: replaces the SPA push so the `/login` URL does NOT
+      // sit in browser history (back button can never bring it back), and
+      // it busts every client cache for protected routes.
+      window.location.assign(dest);
     } catch (e) {
       if (e instanceof AuthError) {
         if (e.fieldErrors) setErrors(e.fieldErrors);

@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { NotificationDropdown } from "@/components/ui/NotificationDropdown";
+import { useUser } from "@/components/auth/AuthProvider";
 
 type Variant = "user" | "driver";
 
@@ -44,21 +45,26 @@ const driverNav = [
   { label: "Riders", href: `${ROUTES.driverDashboard}#riders`, icon: Users },
 ];
 
+const FALLBACK_AVATAR = {
+  user: "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?w=120&q=85&auto=format&fit=crop",
+  driver:
+    "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&q=85&auto=format&fit=crop",
+};
+
 export function DashboardSidebar({ variant }: { variant: Variant }) {
   const pathname = usePathname();
+  const sessionUser = useUser();
   const nav = variant === "user" ? userNav : driverNav;
-  const user =
-    variant === "user"
-      ? {
-          name: "Alex Morgan",
-          role: "SwiftCab Plus member",
-          img: "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?w=120&q=85&auto=format&fit=crop",
-        }
-      : {
-          name: "Daniel Okafor",
-          role: "Driver-partner · 4.98★",
-          img: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&q=85&auto=format&fit=crop",
-        };
+  const user = {
+    name: sessionUser?.name ?? (variant === "user" ? "Rider" : "Driver"),
+    role:
+      variant === "user"
+        ? `SwiftCab ${sessionUser?.tier ?? "Lite"} member`
+        : "Driver-partner",
+    img:
+      sessionUser?.avatarUrl ||
+      (variant === "user" ? FALLBACK_AVATAR.user : FALLBACK_AVATAR.driver),
+  };
 
   return (
     <aside className="sticky top-0 hidden h-screen w-72 shrink-0 flex-col border-r border-white/10 bg-ink-950/60 backdrop-blur-xl lg:flex">

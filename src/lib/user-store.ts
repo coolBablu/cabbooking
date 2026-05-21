@@ -10,6 +10,7 @@
  */
 
 import { promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
@@ -35,23 +36,40 @@ export const isDemoMode = (): boolean => !env.databaseUrl;
 
 // ───────────────────────────────────────────────────────────
 // File-backed demo store
+//
+// We prefer the OS temp dir (always writable on serverless platforms
+// like Vercel/AWS Lambda where `/var/task` is read-only). Locally this
+// resolves to e.g. `C:\Users\…\AppData\Local\Temp` or `/tmp`.
+// On serverless, /tmp is ephemeral per cold start which is fine: the
+// auto-seeded demo accounts are re-created on first read each time.
 // ───────────────────────────────────────────────────────────
 
-const DEMO_DIR = path.join(process.cwd(), ".swiftcab-demo");
+const DEMO_DIR = path.join(os.tmpdir(), "swiftcab-demo");
 const DEMO_FILE = path.join(DEMO_DIR, "users.json");
 
 let memoryCache: StoredUser[] | null = null;
 
 async function readDemo(): Promise<StoredUser[]> {
   if (memoryCache) return memoryCache;
+
   try {
     const raw = await fs.readFile(DEMO_FILE, "utf8");
     memoryCache = JSON.parse(raw) as StoredUser[];
     return memoryCache;
   } catch {
-    // First run — seed with demo accounts so the showcase works immediately.
-    memoryCache = await buildSeedUsers();
-    await writeDemo(memoryCache);
+    // First run (or file missing) — seed with demo accounts.
+    const seeded = await buildSeedUsers();
+    memoryCache = seeded;
+    // Best-effort write; if the FS is read-only we still keep
+    // the in-memory cache so signup/login works for this process.
+    try {
+      await writeDemo(seeded);
+    } catch (e) {
+      console.warn(
+        "[user-store] demo store is in-memory only:",
+        e instanceof Error ? e.message : e
+      );
+    }
     return memoryCache;
   }
 }
@@ -109,9 +127,18 @@ async function buildSeedUsers(): Promise<StoredUser[]> {
 }
 
 async function writeDemo(users: StoredUser[]) {
+  // Always update the in-memory cache first so the request that
+  // triggered the write sees its own change, even if disk fails.
   memoryCache = users;
-  await fs.mkdir(DEMO_DIR, { recursive: true });
-  await fs.writeFile(DEMO_FILE, JSON.stringify(users, null, 2), "utf8");
+  try {
+    await fs.mkdir(DEMO_DIR, { recursive: true });
+    await fs.writeFile(DEMO_FILE, JSON.stringify(users, null, 2), "utf8");
+  } catch (e) {
+    console.warn(
+      "[user-store] could not persist demo store to disk:",
+      e instanceof Error ? e.message : e
+    );
+  }
 }
 
 // ───────────────────────────────────────────────────────────

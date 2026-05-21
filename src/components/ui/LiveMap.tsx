@@ -113,7 +113,12 @@ export function LiveMap({
       }).addTo(map);
 
       // ── Real driving route from OSRM ───────────────────────
-      let coords: [number, number][] = [];
+      const fallbackCoords: [number, number][] = [
+        [pickup.lat, pickup.lng],
+        [dropoff.lat, dropoff.lng],
+      ];
+      let coords: [number, number][] = fallbackCoords;
+
       try {
         const url = `https://router.project-osrm.org/route/v1/driving/${pickup.lng},${pickup.lat};${dropoff.lng},${dropoff.lat}?overview=full&geometries=geojson`;
         const res = await fetch(url, { cache: "no-store" });
@@ -127,17 +132,21 @@ export function LiveMap({
         };
         const route = data.routes?.[0];
         if (!route) throw new Error("No route");
-        coords = route.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+
+        const decoded = route.geometry.coordinates.map<[number, number]>(
+          ([lng, lat]) => [lat, lng]
+        );
+        // OSRM can occasionally return an empty or single-point geometry for
+        // degenerate inputs — fall back to the straight line in that case so
+        // the animation loop never sees an empty array.
+        coords = decoded.length >= 2 ? decoded : fallbackCoords;
+
         if (!cancelled) {
           setEta(Math.round(route.duration / 60));
           setDistanceKm(+(route.distance / 1000).toFixed(1));
         }
       } catch {
-        // Fallback: straight line between the two points
-        coords = [
-          [pickup.lat, pickup.lng],
-          [dropoff.lat, dropoff.lng],
-        ];
+        coords = fallbackCoords;
         if (!cancelled) {
           setError(true);
           setEta(22);
@@ -145,7 +154,8 @@ export function LiveMap({
         }
       }
 
-      if (cancelled || !map) return;
+      // Hard invariant past this point — keep TS + runtime happy.
+      if (cancelled || !map || coords.length < 2) return;
 
       // Glow under-layer
       L.polyline(coords, {
@@ -184,18 +194,28 @@ export function LiveMap({
 
       const carMarker = L.marker(coords[0], { icon: carIcon }).addTo(map);
 
-      // Animate the marker along the polyline
+      // Animate the marker along the polyline. Defensive on every frame —
+      // after unmount the closures can still be alive for one tick before
+      // `cancelAnimationFrame` lands, and `coords` could be empty in pathological
+      // OSRM responses (already filtered above, but belt-and-braces).
       const DURATION_MS = 14_000;
       let start = performance.now();
       const animate = (now: number) => {
+        if (cancelled) return;
+        const last = coords.length - 1;
+        if (last < 1) return;
+
         const t = ((now - start) % DURATION_MS) / DURATION_MS;
-        const i = t * (coords.length - 1);
-        const idx = Math.floor(i);
+        const i = t * last;
+        const idx = Math.min(Math.max(Math.floor(i), 0), last);
+        const next = Math.min(idx + 1, last);
+        const a = coords[idx];
+        const b = coords[next];
+        if (!a || !b) return;
+
         const frac = i - idx;
-        const [aLat, aLng] = coords[idx];
-        const [bLat, bLng] = coords[Math.min(idx + 1, coords.length - 1)];
-        const lat = aLat + (bLat - aLat) * frac;
-        const lng = aLng + (bLng - aLng) * frac;
+        const lat = a[0] + (b[0] - a[0]) * frac;
+        const lng = a[1] + (b[1] - a[1]) * frac;
         carMarker.setLatLng([lat, lng]);
         if (t > 0.99) start = now;
         animationId = requestAnimationFrame(animate);

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState, type FormEvent } from "react";
 import { motion } from "framer-motion";
 import {
@@ -44,9 +44,8 @@ function SignupFallback() {
 }
 
 function SignupForm() {
-  const router = useRouter();
   const params = useSearchParams();
-  const redirect = params.get("redirect");
+  const nextParam = params.get("next") || params.get("redirect");
 
   const [show, setShow] = useState(false);
   const [role, setRole] = useState<Role>("rider");
@@ -101,8 +100,10 @@ function SignupForm() {
         role: role === "rider" ? "RIDER" : "DRIVER",
         acceptTerms: true,
       });
-      router.push(redirect || homeForRole(user.role));
-      router.refresh();
+      const dest =
+        nextParam && nextParam.startsWith("/") ? nextParam : homeForRole(user.role);
+      // Hard navigation so the `/signup` URL never sits in history.
+      window.location.assign(dest);
     } catch (e) {
       if (e instanceof AuthError) {
         if (e.fieldErrors) setErrors(e.fieldErrors);

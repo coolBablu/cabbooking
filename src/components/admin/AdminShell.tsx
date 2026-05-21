@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
 import { SignOutButton } from "@/components/auth/SignOutButton";
 import { NotificationDropdown } from "@/components/ui/NotificationDropdown";
+import { useUser } from "@/components/auth/AuthProvider";
 
 const nav = [
   { label: "Dashboard", href: ROUTES.admin, icon: LayoutDashboard },
@@ -32,6 +33,9 @@ const nav = [
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const user = useUser();
+  const displayName = user?.name ?? "Admin";
+  const initial = displayName.trim().charAt(0).toUpperCase() || "A";
 
   return (
     <aside className="sticky top-0 hidden h-screen w-72 shrink-0 flex-col border-r border-white/10 bg-ink-950/60 backdrop-blur-xl lg:flex">
@@ -91,11 +95,13 @@ export function AdminSidebar() {
 
         <div className="mt-3 flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-tr from-rose-500 to-sunny-400 text-ink-950 font-bold">
-            S
+            {initial}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">Sasha Romanov</p>
-            <p className="truncate text-[11px] text-white/55">Super admin</p>
+            <p className="truncate text-sm font-semibold">{displayName}</p>
+            <p className="truncate text-[11px] text-white/55">
+              {user?.role === "ADMIN" ? "Super admin" : "Admin"}
+            </p>
           </div>
         </div>
       </div>
