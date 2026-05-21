@@ -1,7 +1,13 @@
 /**
  * Centralized environment access.
- * All env vars are optional at build time so that the codebase compiles
- * without secrets; runtime handlers fail loud if they're missing.
+ *
+ * Build never fails for missing secrets — every var is optional at build
+ * time so the codebase compiles cleanly. Runtime handlers that genuinely
+ * need a var call `requireEnv()` and surface a clear error.
+ *
+ * On Node.js server start we print a one-time banner summarising which
+ * features are live vs degraded, so it's obvious whether the deploy is
+ * misconfigured.
  */
 
 export const env = {
@@ -33,4 +39,51 @@ export function requireEnv(key: keyof typeof env): string {
     );
   }
   return v as string;
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Startup banner — Node.js server only (skipped in Edge / browser).
+// Runs once per cold start. Surfaces:
+//   • missing JWT_SECRET in production (the #1 redeploy bug we've seen)
+//   • which features are running in mock/demo mode
+// ───────────────────────────────────────────────────────────────────────
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __swiftcab_banner_printed__: boolean | undefined;
+}
+
+const isNode = typeof process !== "undefined" && !!process.versions?.node;
+const isEdge = (process as { env?: { NEXT_RUNTIME?: string } }).env?.NEXT_RUNTIME === "edge";
+
+if (isNode && !isEdge && !globalThis.__swiftcab_banner_printed__) {
+  globalThis.__swiftcab_banner_printed__ = true;
+
+  const tick = (b: boolean) => (b ? "✓" : "·");
+  const features = {
+    "Real database": Boolean(env.databaseUrl),
+    "Stripe payments": Boolean(env.stripeSecretKey),
+    "Razorpay payments": Boolean(env.razorpayKeyId && env.razorpayKeySecret),
+    "Google Maps": Boolean(env.googleMapsKey),
+    "Email (SMTP)": Boolean(env.smtpHost && env.smtpUser),
+  };
+
+  const lines = [
+    "  ▲ SwiftCab",
+    ...Object.entries(features).map(
+      ([name, on]) =>
+        `    ${tick(on)} ${name.padEnd(20)} ${on ? "live" : "demo / mock"}`
+    ),
+  ];
+
+  // Hard warning if JWT_SECRET is missing in a production build.
+  if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
+    lines.push("");
+    lines.push("    ⚠️  JWT_SECRET is NOT set in production!");
+    lines.push("       Login will fail with a redirect loop until you set it.");
+    lines.push("       See .env.example for instructions.");
+  }
+
+  // eslint-disable-next-line no-console
+  console.log("\n" + lines.join("\n") + "\n");
 }
